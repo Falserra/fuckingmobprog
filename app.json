@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobprog",
+    "name": "CiCo",
     "slug": "mobprog",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -31,6 +31,12 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID to log you in."
         }
       ]
     ],

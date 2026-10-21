@@ -1,98 +1,96 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+// Login (Figure 3 / Figure 10): credentials → MPIN or biometric second factor → dashboard.
+import * as LocalAuthentication from 'expo-local-authentication';
+import { Link } from 'expo-router';
+import { useState } from 'react';
+import { Alert, Text, View } from 'react-native';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Btn, C, Card, H2, Input, Muted, Screen, s } from '@/components/wallet-ui';
+import type { Account } from '@/lib/types';
+import { useWallet } from '@/lib/wallet-store';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
+export default function LoginScreen() {
+  const { validateCredentials, verifySecondFactor, login } = useWallet();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [found, setFound] = useState<Account | null>(null); // account awaiting second factor
+  const [mpin, setMpin] = useState('');
+
+  const submit = () => {
+    const res = validateCredentials(username, password);
+    if (!res.ok) return Alert.alert('Login failed', res.error);
+    setFound(res.account);
+    if (res.account.biometricEnabled) tryBiometric(res.account);
+  };
+
+  const verify = () => {
+    if (!found) return;
+    const res = verifySecondFactor(found, mpin);
+    if (res.ok) login(found);
+    else {
+      setMpin('');
+      Alert.alert('Authentication failed', res.error);
+    }
+  };
+
+  async function tryBiometric(account: Account) {
+    const available = (await LocalAuthentication.hasHardwareAsync()) && (await LocalAuthentication.isEnrolledAsync());
+    if (!available) return Alert.alert('Biometrics unavailable', 'Use your 6-digit MPIN instead.');
+    const r = await LocalAuthentication.authenticateAsync({ promptMessage: 'Log in to CiCo', cancelLabel: 'Use MPIN', disableDeviceFallback: true });
+    if (r.success) login(account);
   }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
+    <Screen bare>
+      <View style={{ marginTop: 40 }}>
+        <Text style={{ fontSize: 54, fontWeight: '800', color: C.ink, letterSpacing: -2 }}>CiCo</Text>
+        <Text style={{ color: C.mute, marginBottom: 24, fontSize: 16 }}>Your wallet, watched over.</Text>
+
+        {!found ? (
+          <>
+            <Card>
+              <Input placeholder="Username" autoCapitalize="none" autoCorrect={false} value={username} onChangeText={setUsername} />
+              <Input placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} onSubmitEditing={submit} />
+              <Btn label="Log in" onPress={submit} />
+            </Card>
+            <View style={{ alignItems: 'center', gap: 4, marginTop: 8 }}>
+              <Muted>Don&apos;t have an account?</Muted>
+              <Link href="/register" style={{ color: C.teal, fontWeight: '700', fontSize: 15, paddingVertical: 6 }}>
+                Create account
+              </Link>
+            </View>
+            <Card style={{ marginTop: 24, backgroundColor: 'transparent', borderWidth: 1, borderColor: C.line }}>
+              <Text style={s.label}>Demo accounts</Text>
+              <Muted>Customer: cico / 1234 · MPIN 123456</Muted>
+              <Muted>Recipient: juan / 1234 · MPIN 111111</Muted>
+              <Muted>Admin: admin / admin123 · MPIN 000000</Muted>
+            </Card>
+          </>
+        ) : (
+          <Card>
+            <H2>Hi {found.name.split(' ')[0]}, enter your MPIN</H2>
+            <Input
+              placeholder="6-digit MPIN"
+              secureTextEntry
+              keyboardType="number-pad"
+              maxLength={6}
+              value={mpin}
+              onChangeText={setMpin}
+              onSubmitEditing={verify}
+              autoFocus
+            />
+            <Btn label="Verify" onPress={verify} disabled={mpin.length !== 6} />
+            {found.biometricEnabled && <Btn label="Use fingerprint / Face ID" variant="teal" onPress={() => tryBiometric(found)} />}
+            <Btn
+              label="Back"
+              variant="ghost"
+              onPress={() => {
+                setFound(null);
+                setMpin('');
+              }}
+            />
+          </Card>
+        )}
+      </View>
+    </Screen>
   );
 }
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});
